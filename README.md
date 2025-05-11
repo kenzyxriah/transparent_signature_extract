@@ -12,7 +12,12 @@ Example
 Original Document → Extracted Signature
 
 <p align="center"> <img src="examples/2.jpg" alt="Original Document" width="350"/> <img src="examples/output4.png" alt="Extracted Signature" width="350"/> </p>
+
 Dependencies (To install)
+```
 - `numpy`
+
 - `opencv-python`
+  
 - `matplotlib (optional, for visualization)`
+```
