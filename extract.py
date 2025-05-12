@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
 
-from utils import thresh_image, smart_crop #, remove_background
+from utils import thresh_image, smart_crop
 
 def rembg_extract_signature(image_path, output_path=None):
     img = cv2.imread(image_path)
@@ -12,52 +12,40 @@ def rembg_extract_signature(image_path, output_path=None):
         return None
 
     thresh = thresh_image(img)
-
-    # Hierachical contour extraction
-    contours, hierarchy = cv2.findContours(thresh, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-    if hierarchy is None:
-        print("No contours found.")
-        return None
-
-    # Find largest parent contour (likely the main signature)
-    max_area = 0
-    main_idx = -1
-    for i, (cnt, hier) in enumerate(zip(contours, hierarchy[0])):
-        if hier[3] == -1:  # Only top-level contours
-            area = cv2.contourArea(cnt)
-            if area > max_area:
-                max_area = area
-                main_idx = i
-
-    if main_idx == -1:
-        print("No valid outer contour found.")
-        return None
-
-    # Build mask from main contour and its children
-    mask = np.zeros_like(thresh)
-    indices_to_draw = [main_idx]  # Start with main
     
-    # Add children of main_idx (holes)
-    for i, h in enumerate(hierarchy[0]):
-        if h[3] == main_idx:
-            indices_to_draw.append(i)
+    #----- First step is to identify the largest external contour(s)-----
+    
+    # Find contours
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    for i in indices_to_draw:
-        color = 255 if hierarchy[0][i][3] == -1 else 0  # Fill parent, erase hole
-        cv2.drawContours(mask, contours, i, color, -1)
+    # Create a mask for the signature
+    mask = np.zeros_like(thresh)
 
-    # Smart crop from original image using bounding box
-    bbox = cv2.boundingRect(contours[main_idx])
+    # Find the largest contour (assumed signature)
+    main_contour = max(contours, key = cv2.contourArea)
+
+    if main_contour is None:
+        print("No significant contour found.")
+        return None
+
+    # Draw the main signature contour
+    cv2.drawContours(mask, [main_contour], -1, 255, -1)
+
+
+    bbox = cv2.boundingRect(main_contour)
     cropped_img = smart_crop(img, bbox)
+
+# 2. ----Second step is to perform hierachical masking-----
+# After smart cropping, we find the largest contour once more on the cropped image.
+# But we use Retr_comp, where we get a parent(outer) and child(inner) boundaries
+# we make sure that anything that isnt the parent boundary in hierachy, is white/transparent
 
     # Re-threshold and repeat contour extraction inside cropped region
     thresh2 = thresh_image(cropped_img)
     contours2, hierarchy2 = cv2.findContours(thresh2, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-    if hierarchy2 is None:
-        print("No contours in cropped image.")
-        return None
 
-    # Find largest outer again
+    # Find largest/maximum outer/parent layer (which we assume to be the outline of the signature)
+    # hierarchy2[0][i][3] == -1 is the parent
     max_idx2 = max(
         [(i, cv2.contourArea(cnt)) for i, cnt in enumerate(contours2) if hierarchy2[0][i][3] == -1],
         key=lambda x: x[1],
@@ -68,13 +56,18 @@ def rembg_extract_signature(image_path, output_path=None):
         print("No valid contour found in cropped image.")
         return None
 
-    # Draw main and its holes again
+    # Create an empty black mask, and draw only the max contour as black, and others like the child, white
     mask2 = np.zeros_like(thresh2)
     draw_indices = [max_idx2]
+    
+    # get other contours now not only on the parent level matching our max parent index
+    # that should be their children
     for i, h in enumerate(hierarchy2[0]):
         if h[3] == max_idx2:
             draw_indices.append(i)
 
+    # ensure only the case of the max parent is colored black
+    # then draw all contours, which will have just the max parent contour colored
     for i in draw_indices:
         color = 255 if hierarchy2[0][i][3] == -1 else 0
         cv2.drawContours(mask2, contours2, i, color, -1)
@@ -101,13 +94,8 @@ def rembg_extract_signature(image_path, output_path=None):
         plt.tight_layout()
         plt.show()
 
-    # return result
 
 
 if __name__ == "__main__":
-    rembg_extract_signature(r'C:\Users\Admin\Downloads\test11.jpeg', 'output1.png')
-    # rembg_extract_signature(r'C:\Users\Admin\Downloads\test11.jpeg', 'output2.png')
-    # rembg_extract_signature(r'C:\Users\Admin\Downloads\test12.jpeg', 'output.png')
-    # rembg_extract_signature(r'C:\Users\Admin\Downloads\2.jpg', 'output4.png')
-    # rembg_extract_signature(r'C:\Users\Admin\Downloads\ref.png', 'output5.png')
-    # rembg_extract_signature(r'C:\Users\Admin\Downloads\test14.jpeg', 'output14.png')
+    rembg_extract_signature(r'C:\Users\Admin\Downloads\2.jpg') #, 'output4.png')
+
